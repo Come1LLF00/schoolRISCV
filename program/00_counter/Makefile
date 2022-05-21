@@ -11,7 +11,7 @@ help:
 	$(info make build     - create .hex program image (default))
 	$(info make board     - copy .hex to boards/program)
 	$(info make modelsim  - run simulation using modelsim)
-	$(info make vivadosim - run simulation using vivadosim)
+	$(info make vivadosim - run simulation using Vivado Simulator)
 	$(info make icarus    - run simulation using icarus verilog)
 	$(info make gtkwave   - open icarus verilog simulation results in gtkwave)
 	$(info make sim       - run simulation in modelsim (if installed) or using icarus)
@@ -87,12 +87,12 @@ endif
 #   rm -rf sim; mkdir sim                                 - recreate simulation folder 
 #   cp *.hex sim/                                         - copy memory image (program.hex) inside it
 #   cd sim && vivado                                      - go to simulation folder and start vivado
-#   -mode batch -source ../../common/vivadosim_script.tcl - run tcl script that will compile files and run simulation
+#   -mode gui -source ../../common/vivadosim_script.tcl   - run tcl script that creates temporary vivado project and runs simulation
 vivadosim: program.hex
 	rm -rf sim
 	mkdir sim
 	cp *.hex sim/
-	cd sim && $(VIVADO) -mode batch -source ../../common/vivadosim_script.tcl
+	cd sim && $(VIVADO) -mode gui -source ../../common/vivadosim_script.tcl
 
 #########################################################
 # simulation in Icarus verilog

@@ -5,15 +5,16 @@
 
 # default target to run when make is called without args
 help:
-	$(info make help     - show this message (default))
-	$(info make clean    - delete folder with simulation data)
-	$(info make rars     - run RISC-V CPU simulator)
-	$(info make build    - create .hex program image)
-	$(info make board    - copy .hex to boards/program)
-	$(info make modelsim - run simulation using modelsim)
-	$(info make icarus   - run simulation using icarus verilog)
-	$(info make gtkwave  - open icarus verilog simulation results in gtkwave)
-	$(info make sim      - run simulation in modelsim (if installed) or using icarus)
+	$(info make help      - show this message)
+	$(info make clean     - delete folder with simulation data)
+	$(info make rars      - run RISC-V CPU simulator)
+	$(info make build     - create .hex program image (default))
+	$(info make board     - copy .hex to boards/program)
+	$(info make modelsim  - run simulation using modelsim)
+	$(info make vivadosim - run simulation using Vivado Simulator)
+	$(info make icarus    - run simulation using icarus verilog)
+	$(info make gtkwave   - open icarus verilog simulation results in gtkwave)
+	$(info make sim       - run simulation in modelsim (if installed) or using icarus)
 	@true
 
 # common targets
@@ -72,6 +73,26 @@ modelsim: program.hex
 	mkdir sim
 	cp *.hex sim/
 	cd sim && $(VSIM) -do ../../common/modelsim_script.tcl
+
+#########################################################
+# simulation in Vivado Simulator
+VIVADO := vivado
+ifdef WSL_DISTRO_NAME
+ ifeq (, $(shell which $(VIVADO)))
+  VIVADO := $(VIVADO).exe
+ endif
+endif
+
+# make vivadosim - start simulation using Vivado Simulator
+#   rm -rf sim; mkdir sim                                 - recreate simulation folder 
+#   cp *.hex sim/                                         - copy memory image (program.hex) inside it
+#   cd sim && vivado                                      - go to simulation folder and start vivado
+#   -mode gui -source ../../common/vivadosim_script.tcl   - run tcl script that creates temporary vivado project and runs simulation
+vivadosim: program.hex
+	rm -rf sim
+	mkdir sim
+	cp *.hex sim/
+	cd sim && $(VIVADO) -mode gui -source ../../common/vivadosim_script.tcl
 
 #########################################################
 # simulation in Icarus verilog
