@@ -123,8 +123,15 @@ if { [string equal [get_filesets -quiet sources_1] ""] } {
 if { [file isdirectory $verilog_dir] == 1 } {
     add_files -fileset sources_1 -quiet $verilog_dir
     # nexys4_ddr.v
-    add_file -fileset sources_1 -quiet $origin_dir/nexys4_ddr.v 
+    add_file -fileset sources_1 -quiet $origin_dir/nexys4_ddr.v
 }
+
+# List of files
+set hex_list "$origin_dir/../program/program.hex"
+
+# Add hex files to project and set the file type
+foreach file $hex_list {add_files $file; \
+    set_property file_type {Memory Initialization Files} [get_files $file]}
 
 # Set the top module for the design if it was specified
 if { ! [string equal $top_module ""] } {
