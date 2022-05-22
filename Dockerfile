@@ -4,6 +4,7 @@ COPY program /program
 COPY src     /src
 COPY entrypoint.sh /entrypoint.sh
 
+RUN apt update
 RUN apt install -y openjdk-8-jdk
 
 ENTRYPOINT ["/entrypoint.sh"]
