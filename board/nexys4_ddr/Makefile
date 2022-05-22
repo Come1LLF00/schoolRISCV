@@ -5,27 +5,31 @@
 
 # default target to run when make is called without args
 help:
-	$(info Warning: targets: open, build, load use Vivado Design Suite NOT Quartus)
-	$(info make help   - show this message(default))
-	$(info make all    - clean, create the board project and run the synthesis)
-	$(info make clean  - delete synth folder)
-	$(info make create - create the board project)
-	$(info make open   - open the board project)
-	$(info make build  - build the board project !NOT implemented yet)
-	$(info make load   - program the FPGA board  !NOT implemented yet)
+	$(info Warning: targets: open, synthesis, implementation, bitstream and program uses Vivado Design Suite NOT Quartus)
+	$(info make help           - show this message(default))
+	$(info make all            - clean, create the board project and run the synthesis)
+	$(info make clean          - delete synth folder)
+	$(info make create         - create the board project)
+	$(info make open           - open the board project)
+	$(info make synthesis      - synthesis the design                !NOT implemented yet)
+	$(info make implementation - implement the design                !NOT implemented yet)
+	$(info make bitstream      - write bitstream from implementation !NOT implemented yet)
+	$(info make program        - program the FPGA board              !NOT implemented yet)
 	@true
 
 CABLE_NAME   ?= "Digilent-USB-Device"
 PROJECT_NAME ?= $(notdir $(CURDIR))
 PROJECT_DIR  ?= project
 
-all: create build
+all: create synthesis
 
 # make clean
 #  delete <project_dirname>
 clean:
 	rm -rf $(PROJECT_DIR)
 	rm -rf .Xil
+	rm -f vivado*.jou
+	rm -f vivado*.log
 
 VIVADO     := vivado
 VIVADO_SH  := vivado_sh
@@ -57,31 +61,26 @@ $(PROJECT_DIR):
 
 # make open
 #  cd project && VIVADO <projectname> &
-#     cd project            - go to project folder 
-#	  &&                    - if previous command was successfull
-#     VIVADO <projectname> - open <projectname> in VIVADO 
-#     &                     - run previous command in shell background
+#     cd project               - go to project folder 
+#	  &&                       - if previous command was successfull
+#     VIVADO <projectname>.xpr - open <projectname> in VIVADO 
+#     &                        - run previous command in shell background
 open: $(PROJECT_DIR)
 	cd $(PROJECT_DIR) && $(VIVADO) $(PROJECT_NAME).xpr &
 
-# make build
-#  cd project && VIVADO_sh --flow compile <projectname>
-#     cd project                              - go to project folder 
-#     &&                                      - if previous command was successfull
-#     VIVADO_sh --flow compile <projectname> - run VIVADO shell & perform basic compilation 
-#                                               of <projectname> project
-build: $(PROJECT_DIR)
+# make synthesis
+synthesis: $(PROJECT_DIR)
 	$(error target $@ is not implemented yet)
-	$(VIVADO_SH) --flow compile $(PROJECT_NAME)
 
-# make load
-#  cd project && VIVADO_pgm -c "USB-Blaster" -m JTAG -o "p;<projectname>.sof"
-#     cd project               - go to project folder 
-#	  &&                       - if previous command was successfull
-#     VIVADO_pgm              - launch VIVADO programmer
-#     -c "USB-Blaster"         - connect to "USB-Blaster" cable
-#     -m JTAG                  - in JTAG programming mode
-#     -o "p;<projectname>.sof" - program (configure) FPGA with <projectname>.sof file
-load:
+# make implementation
+implementation: synthesis
 	$(error target $@ is not implemented yet)
-	$(VIVADO_PGM) -c $(CABLE_NAME) -m JTAG -o "p;$(PROJECT_NAME).sof"
+
+# make bitstream
+bitstream: implementation
+	$(error target $@ is not implemented yet)
+
+# make program
+program: bitstream
+	$(error target $@ is not implemented yet)
+
