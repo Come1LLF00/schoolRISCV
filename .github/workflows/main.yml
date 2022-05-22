@@ -1,0 +1,10 @@
+on: [push]
+
+jobs:
+  hello_world_job:
+    runs-on: ubuntu-latest
+    name: A job to run simulations via icarus verilog
+    steps:
+      - name: 
+        id: sim
+        uses: actions/school-riscv
