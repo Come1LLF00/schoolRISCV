@@ -5,7 +5,7 @@ COPY src     /src
 COPY entrypoint.sh /entrypoint.sh
 
 RUN apk update
-RUN apk install -y openjdk-8-jdk
-RUN apk install -y iverilog
+RUN apk add openjdk-8-jdk
+RUN apk add iverilog
 
 ENTRYPOINT ["/entrypoint.sh"]
