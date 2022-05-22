@@ -5,6 +5,6 @@ COPY src     /src
 COPY entrypoint.sh /entrypoint.sh
 
 RUN apt update
-RUN apt install -y openjdk-8-jre iverilog
+RUN apt install -y make openjdk-8-jre iverilog
 
 ENTRYPOINT ["/entrypoint.sh"]
