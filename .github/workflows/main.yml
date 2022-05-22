@@ -5,6 +5,6 @@ jobs:
     runs-on: ubuntu-latest
     name: A job to run simulations via icarus verilog
     steps:
-      - name: 
+      - name: Run action 
         id: sim
-        uses: ./action.yml
+        uses: ./
