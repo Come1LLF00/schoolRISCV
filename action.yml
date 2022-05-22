@@ -1,0 +1,6 @@
+# action.yml
+name: 'icarus-simulate'
+description: 'run simulation for all programs in program and save waveforms'
+runs:
+  using: 'docker'
+  image: 'Dockerfile'

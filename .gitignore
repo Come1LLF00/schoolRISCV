@@ -7,6 +7,9 @@ sim/
 *.lst
 *.map
 *.rec
+vivado*.jou
+vivado*.log
+.Xil
 
 FPGA*.txt
 test.html
