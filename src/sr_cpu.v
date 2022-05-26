@@ -22,13 +22,24 @@ module sr_cpu
     //control wires
     wire        aluZero;
     wire        aluSign;
-    wire       aluCarry;
+    wire        aluCarry;
     wire        aluOverflow;
     wire        pcSrc;
     wire        regWrite;
-    wire        aluSrc;
+    wire        unitSrc;
     wire        wdSrc;
-    wire  [2:0] aluControl;
+    wire  [2:0] unitControl;
+    // ccu block control wires
+    wire        ccuZero;
+    wire        ccuSign;
+    wire        ccuCarry;
+    wire        ccuOverflow;
+    wire        ccuBusy;
+    //units control wires
+    wire        unitZero;
+    wire        unitSign;
+    wire        unitCarry;
+    wire        unitOverflow;
 
     //instruction decode wires
     wire [ 6:0] cmdOp;
@@ -45,12 +56,12 @@ module sr_cpu
     wire [31:0] pc;
     wire [31:0] pcBranch = pc + immB;
     wire [31:0] pcPlus4  = pc + 4;
-    wire [31:0] pcNext   = pcSrc ? pcBranch : pcPlus4;
+    wire [31:0] pcNext   = ccuBusy ? pc : ( pcSrc ? pcBranch : pcPlus4 ); // if ccu busy save the current PC
     sm_register r_pc(clk ,rst_n, pcNext, pc);
 
     //program memory access
     assign imAddr = pc >> 2;
-    wire [31:0] instr = imData;
+    wire [31:0] instr = ccuBusy ? RVIN_NOP : imData; // proxied instructions source, adding bubbles (nops) if ccuBusy
 
     //instruction decode
     sr_decode id (
@@ -89,13 +100,13 @@ module sr_cpu
     assign regData = (regAddr != 0) ? rd0 : pc;
 
     //alu
-    wire [31:0] srcB = aluSrc ? immI : rd2;
+    wire [31:0] srcB = unitSrc ? immI : rd2;
     wire [31:0] aluResult;
 
     sr_alu alu (
         .srcA       ( rd1          ),
         .srcB       ( srcB         ),
-        .oper       ( aluControl   ),
+        .oper       ( unitControl  ),
         .zero       ( aluZero      ),
         .sign       ( aluSign      ),
         .carry      ( aluCarry     ),
@@ -103,24 +114,61 @@ module sr_cpu
         .result     ( aluResult    ) 
     );
 
+    //ccu
+    wire [31:0] ccuResult;
+
+    sr_ccu ccu (
+        .clk        ( clk          ),
+        .srcA       ( rd1          ),
+        .srcB       ( srcB         ),
+        .oper       ( unitControl  ),
+        .zero       ( ccuZero      ),
+        .sign       ( ccuSign      ),
+        .carry      ( ccuCarry     ),
+        .overflow   ( ccuOverflow  ),
+        .result     ( ccuResult    ),
+        .busy       ( ccuBusy      )
+    );
+
     assign wd3 = wdSrc ? immU : aluResult;
 
     //control
     sr_control sm_control (
-        .cmdOp      ( cmdOp        ),
-        .cmdF3      ( cmdF3        ),
-        .cmdF7      ( cmdF7        ),
-        .aluZero    ( aluZero      ),
-        .aluSign    ( aluSign      ),
-        .aluCarry   ( aluCarry     ),
-        .aluOverflow( aluOverflow  ),
-        .pcSrc      ( pcSrc        ),
-        .regWrite   ( regWrite     ),
-        .aluSrc     ( aluSrc       ),
-        .wdSrc      ( wdSrc        ),
-        .aluControl ( aluControl   ) 
+        .cmdOp        ( cmdOp        ),
+        .cmdF3        ( cmdF3        ),
+        .cmdF7        ( cmdF7        ),
+        .unitZero     ( unitZero     ),
+        .unitSign     ( unitSign     ),
+        .unitCarry    ( unitCarry    ),
+        .unitOverflow ( unitOverflow ),
+        .pcSrc        ( pcSrc        ),
+        .regWrite     ( regWrite     ),
+        .unitSrc      ( unitSrc      ),
+        .wdSrc        ( wdSrc        ),
+        .unitControl  ( unitControl  ),
+        .unitSelect   ( unitSelect   )
     );
 
+    //result source selector
+    sr_unit_selector unit_selector (
+        .unit         ( unitSelect   ),
+        .aluZero      ( aluZero      ),
+        .aluSign      ( aluSign      ),
+        .aluCarry     ( aluCarry     ),
+        .aluOverflow  ( aluOverflow  ),
+        .aluResult    ( aluResult    ),
+        .ccuZero      ( ccuZero      ),
+        .ccuSign      ( ccuSign      ),
+        .ccuCarry     ( ccuCarry     ),
+        .ccuOverflow  ( ccuOverflow  ),
+        .ccuResult    ( ccuResult    ),
+        .ccuBusy      ( ccuBusy      ),
+        .unitZero     ( unitZero     ),
+        .unitSign     ( unitSign     ),
+        .unitCarry    ( unitCarry    ),
+        .unitOverflow ( unitOverflow ),
+        .unitResult   ( unitResult   ),
+    );
 endmodule
 
 module sr_decode
@@ -171,15 +219,16 @@ module sr_control
     input     [ 6:0] cmdOp,
     input     [ 2:0] cmdF3,
     input     [ 6:0] cmdF7,
-    input            aluZero,
-    input            aluSign,
-    input           aluCarry,
-    input        aluOverflow,
+    input            unitZero,
+    input            unitSign,
+    input            unitCarry,
+    input            unitOverflow,
     output           pcSrc, 
     output reg       regWrite, 
-    output reg       aluSrc,
+    output reg       unitSrc,
     output reg       wdSrc,
-    output reg [2:0] aluControl
+    output reg [2:0] unitControl,
+    output reg       unitSelect
 );
     reg          branch;
     reg          condZero;
@@ -189,9 +238,9 @@ module sr_control
 
     always @ (*)
         casez ( { cmdF3, condZero, condLess } )
-            { `RVF3_BEQ, 1'b?, 1'b? } : condResult = (aluZero == condZero);
-            { `RVF3_BNE, 1'b?, 1'b? } : condResult = (aluZero == condZero);
-            { `RVF3_BGE, 1'b?, 1'b? } : condResult = (aluSign == aluOverflow) == ~condLess;
+            { `RVF3_BEQ, 1'b?, 1'b? } : condResult = (unitZero == condZero);
+            { `RVF3_BNE, 1'b?, 1'b? } : condResult = (unitZero == condZero);
+            { `RVF3_BGE, 1'b?, 1'b? } : condResult = (unitSign == unitOverflow) == ~condLess;
             { `RVF3_ANY, 1'b?, 1'b? } : condResult = 0;
         endcase
 
@@ -200,24 +249,27 @@ module sr_control
         condZero    = 1'b0;
         condLess    = 1'b0; // turn 1 for BL branch if less
         regWrite    = 1'b0;
-        aluSrc      = 1'b0;
+        unitSrc     = 1'b0;
         wdSrc       = 1'b0;
-        aluControl  = `ALU_ADD;
+        unitSelect  = 1'b0;
+        unitControl = `ALU_ADD;
 
-        casez( {cmdF7, cmdF3, cmdOp} )
-            { `RVF7_ADD,  `RVF3_ADD,  `RVOP_ADD  } : begin regWrite = 1'b1; aluControl = `ALU_ADD;  end
-            { `RVF7_OR,   `RVF3_OR,   `RVOP_OR   } : begin regWrite = 1'b1; aluControl = `ALU_OR;   end
-            { `RVF7_SRL,  `RVF3_SRL,  `RVOP_SRL  } : begin regWrite = 1'b1; aluControl = `ALU_SRL;  end
-            { `RVF7_SLTU, `RVF3_SLTU, `RVOP_SLTU } : begin regWrite = 1'b1; aluControl = `ALU_SLTU; end
-            { `RVF7_SUB,  `RVF3_SUB,  `RVOP_SUB  } : begin regWrite = 1'b1; aluControl = `ALU_SUB;  end
+        casez ( {cmdF7, cmdF3, cmdOp} )
+            { `RVF7_ADD,  `RVF3_ADD,  `RVOP_ADD  } : begin regWrite = 1'b1; unitControl = `ALU_ADD;  end
+            { `RVF7_OR,   `RVF3_OR,   `RVOP_OR   } : begin regWrite = 1'b1; unitControl = `ALU_OR;   end
+            { `RVF7_SRL,  `RVF3_SRL,  `RVOP_SRL  } : begin regWrite = 1'b1; unitControl = `ALU_SRL;  end
+            { `RVF7_SLTU, `RVF3_SLTU, `RVOP_SLTU } : begin regWrite = 1'b1; unitControl = `ALU_SLTU; end
+            { `RVF7_SUB,  `RVF3_SUB,  `RVOP_SUB  } : begin regWrite = 1'b1; unitControl = `ALU_SUB;  end
 
-            { `RVF7_ANY,  `RVF3_ADDI, `RVOP_ADDI } : begin regWrite = 1'b1; aluSrc = 1'b1; aluControl = `ALU_ADD; end
+            { `RVF7_ANY,  `RVF3_ADDI, `RVOP_ADDI } : begin regWrite = 1'b1; unitSrc = 1'b1; unitControl = `ALU_ADD; end
             { `RVF7_ANY,  `RVF3_ANY,  `RVOP_LUI  } : begin regWrite = 1'b1; wdSrc  = 1'b1; end
 
-            { `RVF7_ANY,  `RVF3_BEQ,  `RVOP_BEQ  } : begin branch = 1'b1; condZero = 1'b1; aluControl = `ALU_SUB; end
-            { `RVF7_ANY,  `RVF3_BNE,  `RVOP_BNE  } : begin branch = 1'b1; aluControl = `ALU_SUB; end
+            { `RVF7_ANY,  `RVF3_BEQ,  `RVOP_BEQ  } : begin branch = 1'b1; condZero = 1'b1; unitControl = `ALU_SUB; end
+            { `RVF7_ANY,  `RVF3_BNE,  `RVOP_BNE  } : begin branch = 1'b1; unitControl = `ALU_SUB; end
 
-            { `RVF7_ANY,  `RVF3_BGE,  `RVOP_BGE  } : begin branch = 1'b1; aluControl = `ALU_SUB; end
+            { `RVF7_ANY,  `RVF3_BGE,  `RVOP_BGE  } : begin branch = 1'b1; unitControl = `ALU_SUB; end
+
+            { `RVF7_LSR,  `RVF3_LSR,  `RVOP_LSR  } : begin regWrite = 1'b1; unitControl = `CCU_START; unitSelect = 1; end
         endcase
     end
 endmodule
@@ -281,4 +333,47 @@ module sm_register_file
 
     always @ (posedge clk)
         if(we3) rf [a3] <= wd3;
+endmodule
+
+module sr_unit_selector
+(
+    input         unit,
+    input         aluZero,
+    input         aluSign,
+    input         aluCarry,
+    input         aluOverflow,
+    input  [31:0] aluResult,
+    input         ccuZero,
+    input         ccuSign,
+    input         ccuCarry,
+    input         ccuOverflow,
+    input  [31:0] ccuResult,
+    input         ccuBusy,
+    output reg    unitZero,
+    output reg    unitSign,
+    output reg    unitCarry,
+    output reg    unitOverflow,
+    output reg [31:0] unitResult 
+);
+    always @ (*)
+        case (unit)
+            default: if (~ccuBusy) begin
+                unitZero     = aluZero;
+                unitSign     = aluSign;
+                unitCarry    = aluCarry;
+                unitOverflow = aluResult;
+            end
+            1'b0: if (~ccuBusy) begin
+                unitZero     = aluZero;
+                unitSign     = aluSign;
+                unitCarry    = aluCarry;
+                unitOverflow = aluResult;
+            end
+            1'b1: begin
+                unitZero     = ccuZero;
+                unitSign     = ccuSign;
+                unitCarry    = ccuCarry;
+                unitOverflow = ccuResult;
+            end
+        endcase
 endmodule
