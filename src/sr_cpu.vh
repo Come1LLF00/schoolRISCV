@@ -20,6 +20,7 @@
 `define RVOP_BEQ    7'b1100011
 `define RVOP_LUI    7'b0110111
 `define RVOP_BNE    7'b1100011
+`define RVOP_BGE    7'b1100011 // why? if it's the same as the other branches
 `define RVOP_ADD    7'b0110011
 `define RVOP_OR     7'b0110011
 `define RVOP_SRL    7'b0110011
@@ -30,6 +31,7 @@
 `define RVF3_ADDI   3'b000
 `define RVF3_BEQ    3'b000
 `define RVF3_BNE    3'b001
+`define RVF3_BGE    3'b101 // bge funct3 code
 `define RVF3_ADD    3'b000
 `define RVF3_OR     3'b110
 `define RVF3_SRL    3'b101

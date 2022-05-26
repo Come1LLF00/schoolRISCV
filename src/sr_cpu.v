@@ -21,6 +21,9 @@ module sr_cpu
 );
     //control wires
     wire        aluZero;
+    wire        aluSign;
+    wire       aluCarry;
+    wire        aluOverflow;
     wire        pcSrc;
     wire        regWrite;
     wire        aluSrc;
@@ -94,6 +97,9 @@ module sr_cpu
         .srcB       ( srcB         ),
         .oper       ( aluControl   ),
         .zero       ( aluZero      ),
+        .sign       ( aluSign      ),
+        .carry      ( aluCarry     ),
+        .overflow   ( aluOverflow  ),
         .result     ( aluResult    ) 
     );
 
@@ -105,6 +111,9 @@ module sr_cpu
         .cmdF3      ( cmdF3        ),
         .cmdF7      ( cmdF7        ),
         .aluZero    ( aluZero      ),
+        .aluSign    ( aluSign      ),
+        .aluCarry   ( aluCarry     ),
+        .aluOverflow( aluOverflow  ),
         .pcSrc      ( pcSrc        ),
         .regWrite   ( regWrite     ),
         .aluSrc     ( aluSrc       ),
@@ -163,6 +172,9 @@ module sr_control
     input     [ 2:0] cmdF3,
     input     [ 6:0] cmdF7,
     input            aluZero,
+    input            aluSign,
+    input           aluCarry,
+    input        aluOverflow,
     output           pcSrc, 
     output reg       regWrite, 
     output reg       aluSrc,
@@ -171,11 +183,22 @@ module sr_control
 );
     reg          branch;
     reg          condZero;
-    assign pcSrc = branch & (aluZero == condZero);
+    reg          condLess;
+    reg          condResult;
+    assign pcSrc = branch & condResult;
+
+    always @ (*)
+        casez ( { cmdF3, condZero, condLess } )
+            { `RVF3_BEQ, 1'b?, 1'b? } : condResult = (aluZero == condZero);
+            { `RVF3_BNE, 1'b?, 1'b? } : condResult = (aluZero == condZero);
+            { `RVF3_BGE, 1'b?, 1'b? } : condResult = (aluSign == aluOverflow) == ~condLess;
+            { `RVF3_ANY, 1'b?, 1'b? } : condResult = 0;
+        endcase
 
     always @ (*) begin
         branch      = 1'b0;
         condZero    = 1'b0;
+        condLess    = 1'b0; // turn 1 for BL branch if less
         regWrite    = 1'b0;
         aluSrc      = 1'b0;
         wdSrc       = 1'b0;
@@ -193,6 +216,8 @@ module sr_control
 
             { `RVF7_ANY,  `RVF3_BEQ,  `RVOP_BEQ  } : begin branch = 1'b1; condZero = 1'b1; aluControl = `ALU_SUB; end
             { `RVF7_ANY,  `RVF3_BNE,  `RVOP_BNE  } : begin branch = 1'b1; aluControl = `ALU_SUB; end
+
+            { `RVF7_ANY,  `RVF3_BGE,  `RVOP_BGE  } : begin branch = 1'b1; aluControl = `ALU_SUB; end
         endcase
     end
 endmodule
@@ -203,20 +228,36 @@ module sr_alu
     input  [31:0] srcB,
     input  [ 2:0] oper,
     output        zero,
+    output        sign,
+    output reg   carry,
+    output reg overflow,
     output reg [31:0] result
 );
+    reg [32:0] proxyA;
+    reg [32:0] proxyB;
+
+
     always @ (*) begin
         case (oper)
-            default   : result = srcA + srcB;
-            `ALU_ADD  : result = srcA + srcB;
-            `ALU_OR   : result = srcA | srcB;
-            `ALU_SRL  : result = srcA >> srcB [4:0];
-            `ALU_SLTU : result = (srcA < srcB) ? 1 : 0;
-            `ALU_SUB : result = srcA - srcB;
+            default   : begin proxyA = srcA; proxyB = srcB; { carry, result } = proxyA + proxyB; end
+            `ALU_ADD  : begin proxyA = srcA; proxyB = srcB; { carry, result } = proxyA + proxyB; end
+            `ALU_OR   : begin proxyA = srcA; proxyB = srcB; { carry, result } = proxyA | proxyB; end
+            `ALU_SRL  : begin proxyA = srcA; proxyB = srcB; { carry, result } = proxyA >> proxyB [4:0]; end
+            `ALU_SLTU : begin proxyA = srcA; proxyB = srcB; { carry, result } = (proxyA < proxyB) ? 1 : 0; end
+            `ALU_SUB :  begin proxyA = srcA; proxyB = ~srcB + 1; { carry, result } = proxyA + proxyB; end
         endcase
     end
 
-    assign zero   = (result == 0);
+    // set overflow logic
+    always @ (*)
+        case ({result[31], proxyA[31], proxyB[31]})
+            default   : overflow = 0;
+            3'b100    : overflow = 1;
+            3'b011    : overflow = 1;
+        endcase
+
+    assign zero     = (result == 0);
+    assign sign     = result[31];
 endmodule
 
 module sm_register_file
