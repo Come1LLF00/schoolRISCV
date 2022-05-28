@@ -125,7 +125,7 @@ module sr_cpu
     //ccu
     wire [31:0] ccuResult;
 
-    sr_ccu ccu (
+    ui_ccu ccu (
         .clk        ( clk          ),
         .rd_i       ( proxyRd      ),
         .srcA       ( rd1          ),
@@ -167,7 +167,7 @@ module sr_cpu
     //result source selector
     wire proxyUnitSelect;
     assign proxyUnitSelect = ccuIRQ ? 1 : unitSelect;
-    sr_unit_selector unit_selector (
+    ui_unit_selector unit_selector (
         .unit         ( proxyUnitSelect ),
         .aluControl   ( aluControl   ),
         .aluZero      ( aluZero      ),
@@ -355,7 +355,7 @@ module sm_register_file
         if(we3) rf [a3] <= wd3;
 endmodule
 
-module sr_unit_selector
+module ui_unit_selector
 (
     input         unit,
     output reg [2:0] aluControl,
@@ -409,7 +409,7 @@ module sr_unit_selector
         endcase
 endmodule
 
-module sr_ccu
+module ui_ccu
 (
     input         clk,
     input  [4:0]  rd_i,
@@ -429,44 +429,77 @@ module sr_ccu
 localparam IDLE = 1'b0;
 localparam WORK = 1'b1;
 
-reg irq;
 wire end_step;
 
-reg [31:0] counter;
-reg [31:0] limit;
-
-assign end_step = counter == limit;
-
 reg state = IDLE;
-assign busy = state == WORK;
+
+reg start = 0;
+reg rst   = 1;
+reg irq   = 0;
+reg busy  = 0;
+
+reg [31:0] a_bi;
+reg [31:0] b_bi;
+wire [63:0] y_bo;
+
+ui_func lsr (
+    .clk      ( clk      ),
+    .rst      ( rst      ),
+    .start    ( start    ),
+    .a_b      ( a_bi     ),
+    .b_b      ( b_bi     ),
+    .y_b      ( y_bo     ),
+    .end_step ( end_step )
+);
 
     always @ ( posedge clk )
         if ( oper == `CCU_RESET ) begin
+            // set up signals for my block
+            a_bi     <= 0;
+            b_bi     <= 0;
+            start    <= 0;
+            rst      <= 1;
+
             result   <= 0;
             rd_o     <= 0;
+
             carry    <= 0;
-            overflow <= 0;
-            counter  <= 0;
-            limit    <= 1;
+            
             irq      <= 0;
+            busy     <= 0;
         end
         else case ( state )
             IDLE: if ( oper == `CCU_START ) begin
                 // set up signals for my block
-                counter <= srcA;
-                limit   <= srcB;
+                a_bi  <= srcA;
+                b_bi  <= srcB;
+                start <= 1;
+                rst   <= 0;
 
                 // remember the destination register
                 rd_o  <= rd_i;
                 state <= WORK;
-            end else irq <= 0;
-            WORK: if ( end_step ) begin
-                result   <= counter;
-                state    <= IDLE;
-                irq      <= 1;
-                overflow <= 1;
+                busy  <= 1;
+            end else begin
+                start <= 0;
+                rst   <= 1;
+
+                irq   <= 0;
+                busy  <= 0;
             end
-            else { carry, counter } <= counter + 1; 
+            WORK: if ( end_step ) begin
+                { carry, result } <= y_bo;
+                state             <= IDLE;
+                irq               <= 1;
+            end
+        endcase
+
+    // logic for setting flags
+    always @ (*)
+        case ({result[31], a_bi[31], b_bi[31]})
+            default   : overflow = 0;
+            3'b100    : overflow = 1;
+            3'b011    : overflow = 1;
         endcase
 
     assign zero = ( result == 0 );
