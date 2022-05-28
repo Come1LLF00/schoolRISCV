@@ -466,6 +466,7 @@ ui_func lsr (
             carry    <= 0;
             
             irq      <= 0;
+            state    <= IDLE;
             busy     <= 0;
         end
         else case ( state )
