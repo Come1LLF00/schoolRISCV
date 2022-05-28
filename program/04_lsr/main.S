@@ -5,7 +5,9 @@
 
             .text
 
-start:      mv a0, zero              # t0 = 0
-            addi zero, zero, 0
-counter:    addi a0, a0, 1           # t0 = t0 + 1
-            beq zero, zero, counter  # if t0 == t1 then counter
+start:      addi a2, zero, 15     # t2 = 15
+loop:       addi a0, zero, 2      # t0 = 2
+            add a1, zero, a2      # t1 = t2
+            add a2, a0, a1        # lsr a2, a0, a1 00b5062b
+            bne a2, zero, loop    # if a2 != 0 then repeat
+            beq zero, zero, start # otherwise jump to start

@@ -16,8 +16,8 @@
 `define ALU_SUB     3'b100
 
 //CCU commands
-`define CCU_RESET   3'b010
-`define CCU_START   3'b001
+`define CCU_RESET   3'h0
+`define CCU_START   3'h1
 
 // instruction opcode
 `define RVOP_ADDI   7'b0010011

@@ -28,18 +28,23 @@ module sr_cpu
     wire        regWrite;
     wire        unitSrc;
     wire        wdSrc;
+    wire  [2:0] aluControl;
     wire  [2:0] unitControl;
     // ccu block control wires
+    wire  [2:0] ccuControl;
     wire        ccuZero;
     wire        ccuSign;
     wire        ccuCarry;
     wire        ccuOverflow;
     wire        ccuBusy;
+    wire        ccuIRQ;
+    wire  [4:0] ccuRd;
     //units control wires
     wire        unitZero;
     wire        unitSign;
     wire        unitCarry;
     wire        unitOverflow;
+    wire [31:0] unitResult;
 
     //instruction decode wires
     wire [ 6:0] cmdOp;
@@ -61,7 +66,7 @@ module sr_cpu
 
     //program memory access
     assign imAddr = pc >> 2;
-    wire [31:0] instr = ccuBusy ? RVIN_NOP : imData; // proxied instructions source, adding bubbles (nops) if ccuBusy
+    wire [31:0] instr = ccuBusy ? `RVIN_NOP : imData; // proxied instructions source, adding bubbles (nops) if ccuBusy
 
     //instruction decode
     sr_decode id (
@@ -83,17 +88,20 @@ module sr_cpu
     wire [31:0] rd2;
     wire [31:0] wd3;
 
+    wire [4:0]  proxyRd;
+    wire        proxyRegWrite;
+
     sm_register_file rf (
         .clk        ( clk          ),
         .a0         ( regAddr      ),
         .a1         ( rs1          ),
         .a2         ( rs2          ),
-        .a3         ( rd           ),
+        .a3         ( proxyRd      ),
         .rd0        ( rd0          ),
         .rd1        ( rd1          ),
         .rd2        ( rd2          ),
         .wd3        ( wd3          ),
-        .we3        ( regWrite     )
+        .we3        ( proxyRegWrite)
     );
 
     //debug register access
@@ -106,7 +114,7 @@ module sr_cpu
     sr_alu alu (
         .srcA       ( rd1          ),
         .srcB       ( srcB         ),
-        .oper       ( unitControl  ),
+        .oper       ( aluControl   ),
         .zero       ( aluZero      ),
         .sign       ( aluSign      ),
         .carry      ( aluCarry     ),
@@ -119,18 +127,25 @@ module sr_cpu
 
     sr_ccu ccu (
         .clk        ( clk          ),
+        .rd_i       ( proxyRd      ),
         .srcA       ( rd1          ),
         .srcB       ( srcB         ),
-        .oper       ( unitControl  ),
+        .oper       ( ccuControl   ),
         .zero       ( ccuZero      ),
         .sign       ( ccuSign      ),
         .carry      ( ccuCarry     ),
         .overflow   ( ccuOverflow  ),
         .result     ( ccuResult    ),
-        .busy       ( ccuBusy      )
+        .busy       ( ccuBusy      ),
+        .irq        ( ccuIRQ       ),
+        .rd_o       ( ccuRd        )
     );
 
-    assign wd3 = wdSrc ? immU : aluResult;
+    assign wd3 = wdSrc ? immU : unitResult;
+
+    // proxy ccu
+    assign proxyRd = ccuIRQ ? ccuRd : rd; 
+    assign proxyRegWrite = ccuIRQ ? 1 : regWrite;
 
     //control
     sr_control sm_control (
@@ -150,13 +165,17 @@ module sr_cpu
     );
 
     //result source selector
+    wire proxyUnitSelect;
+    assign proxyUnitSelect = ccuIRQ ? 1 : unitSelect;
     sr_unit_selector unit_selector (
-        .unit         ( unitSelect   ),
+        .unit         ( proxyUnitSelect ),
+        .aluControl   ( aluControl   ),
         .aluZero      ( aluZero      ),
         .aluSign      ( aluSign      ),
         .aluCarry     ( aluCarry     ),
         .aluOverflow  ( aluOverflow  ),
         .aluResult    ( aluResult    ),
+        .ccuControl   ( ccuControl   ),
         .ccuZero      ( ccuZero      ),
         .ccuSign      ( ccuSign      ),
         .ccuCarry     ( ccuCarry     ),
@@ -168,6 +187,7 @@ module sr_cpu
         .unitCarry    ( unitCarry    ),
         .unitOverflow ( unitOverflow ),
         .unitResult   ( unitResult   ),
+        .unitControl  ( unitControl  )
     );
 endmodule
 
@@ -338,17 +358,20 @@ endmodule
 module sr_unit_selector
 (
     input         unit,
+    output reg [2:0] aluControl,
     input         aluZero,
     input         aluSign,
     input         aluCarry,
     input         aluOverflow,
     input  [31:0] aluResult,
+    output reg [2:0] ccuControl,
     input         ccuZero,
     input         ccuSign,
     input         ccuCarry,
     input         ccuOverflow,
     input  [31:0] ccuResult,
     input         ccuBusy,
+    input  [2:0]  unitControl,
     output reg    unitZero,
     output reg    unitSign,
     output reg    unitCarry,
@@ -361,19 +384,91 @@ module sr_unit_selector
                 unitZero     = aluZero;
                 unitSign     = aluSign;
                 unitCarry    = aluCarry;
-                unitOverflow = aluResult;
+                unitOverflow = aluOverflow;
+                unitResult   = aluResult;
+                aluControl   = unitControl;
+                ccuControl   = `CCU_RESET;
             end
             1'b0: if (~ccuBusy) begin
                 unitZero     = aluZero;
                 unitSign     = aluSign;
                 unitCarry    = aluCarry;
-                unitOverflow = aluResult;
+                unitOverflow = aluOverflow;
+                unitResult   = aluResult;
+                aluControl   = unitControl;
+                ccuControl   = `CCU_RESET;
             end
             1'b1: begin
                 unitZero     = ccuZero;
                 unitSign     = ccuSign;
                 unitCarry    = ccuCarry;
-                unitOverflow = ccuResult;
+                unitOverflow = ccuOverflow;
+                unitResult   = ccuResult;
+                ccuControl   = unitControl;
             end
         endcase
+endmodule
+
+module sr_ccu
+(
+    input         clk,
+    input  [4:0]  rd_i,
+    input  [31:0] srcA,
+    input  [31:0] srcB,
+    input  [2:0]  oper,
+    output        zero,
+    output        sign,
+    output reg    carry,
+    output reg    overflow,
+    output reg [31:0] result,
+    output        busy,
+    output        irq,
+    output reg [4:0] rd_o
+);
+
+localparam IDLE = 1'b0;
+localparam WORK = 1'b1;
+
+reg irq;
+wire end_step;
+
+reg [31:0] counter;
+reg [31:0] limit;
+
+assign end_step = counter == limit;
+
+reg state = IDLE;
+assign busy = state == WORK;
+
+    always @ ( posedge clk )
+        if ( oper == `CCU_RESET ) begin
+            result   <= 0;
+            rd_o     <= 0;
+            carry    <= 0;
+            overflow <= 0;
+            counter  <= 0;
+            limit    <= 1;
+            irq      <= 0;
+        end
+        else case ( state )
+            IDLE: if ( oper == `CCU_START ) begin
+                // set up signals for my block
+                counter <= srcA;
+                limit   <= srcB;
+
+                // remember the destination register
+                rd_o  <= rd_i;
+                state <= WORK;
+            end else irq <= 0;
+            WORK: if ( end_step ) begin
+                result   <= counter;
+                state    <= IDLE;
+                irq      <= 1;
+                overflow <= 1;
+            end
+            else { carry, counter } <= counter + 1; 
+        endcase
+
+    assign zero = ( result == 0 );
+    assign sign = result[31];
 endmodule

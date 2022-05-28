@@ -102,6 +102,8 @@ module sm_testbench;
             { `RVF7_ANY,  `RVF3_BEQ,  `RVOP_BEQ  } : $write ("beq   $%1d, $%1d, 0x%8h (%1d)", rs1, rs2, immB, immB);
             { `RVF7_ANY,  `RVF3_BNE,  `RVOP_BNE  } : $write ("bne   $%1d, $%1d, 0x%8h (%1d)", rs1, rs2, immB, immB);
             { `RVF7_ANY,  `RVF3_BGE,  `RVOP_BGE  } : $write ("bge   $%1d, $%1d, 0x%8h (%1d)", rs1, rs2, immB, immB);
+
+            { `RVF7_LSR,  `RVF3_LSR,  `RVOP_LSR  } : $write ("lsr   $%1d, $%1d, $%1d", rd, rs1, rs2);
         endcase
     end
     endtask
